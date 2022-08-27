@@ -133,7 +133,7 @@ def train(model, device, loss_function):
             model.zero_grad()
 
             outputs = model(b_input_ids, attention_mask=b_input_mask, labels=b_labels)
-            loss = loss_function(outputs, b_labels)
+            loss = loss_function(outputs.logits, b_labels)
 
             total_loss += loss.item()
             loss.backward()
@@ -177,6 +177,8 @@ if __name__ == "__main__":
     loss_function = nn.CrossEntropyLoss()
     
     model = net()
+    
     device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(device)
+    model = model.to(device)
     train(model, device, loss_function)
