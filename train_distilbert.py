@@ -13,17 +13,24 @@ from torch.utils.data import DataLoader, RandomSampler, TensorDataset
 from torch.optim import AdamW
 from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
 
-MAX_LEN = 128 
-batch_size=14
-epochs=2
+MAX_LEN = 256
+
+#hyperparameters
+batch_size=128
+epochs=1
+learning_rate=2e-5
+adam_epsilon = 1e-8
+
+#save path for later use
+model_save_path = f'./models/unspsc_distibert_batch_{batch_size}_epochs_{1}_lr_{learning_rate}_eps_{adam_epsilon}.pth'
 
 #distilbert tokenizer - distilbert uncased
 tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
 
-def flat_accuracy(preds, labels):
+def number_correct(preds, labels):
     pred_flat = np.argmax(preds, axis=1).flatten()
     labels_flat = labels.flatten()
-    return np.sum(pred_flat == labels_flat) / len(labels_flat)
+    return np.sum(pred_flat == labels_flat)
 
 
 def get_train_data_loader(batch_size):
@@ -33,7 +40,7 @@ def get_train_data_loader(batch_size):
 
     input_ids = []
     for description in descriptions:
-        encoded_description = tokenizer.encode(description, add_special_tokens=True)
+        encoded_description = tokenizer.encode(description, add_special_tokens=True, truncation=True, max_length = MAX_LEN)
         input_ids.append(encoded_description)
 
     # pad shorter sentences
@@ -70,7 +77,7 @@ def get_test_data_loader(test_batch_size):
 
     input_ids = []
     for description in descriptions:
-        encoded_description = tokenizer.encode(description, add_special_tokens=True)
+        encoded_description = tokenizer.encode(description, add_special_tokens=True, truncation = True, max_length = MAX_LEN)
         input_ids.append(encoded_description)
 
     # pad shorter sentences
@@ -112,15 +119,9 @@ def net():
     return model
     
 
-def train(model, device, loss_function):
+def train(model, device, loss_function, optimizer):
     train_loader = get_train_data_loader(batch_size)
     test_loader = get_test_data_loader(batch_size)
-
-    optimizer = AdamW(
-        model.parameters(),
-        lr=2e-5,  # args.learning_rate - default is 5e-5, our notebook had 2e-5
-        eps=1e-8,  # args.adam_epsilon - default is 1e-8.
-    )
 
     for epoch in range(1, epochs + 1):
         print(f'current epoch: {epoch}')
@@ -152,33 +153,50 @@ def train(model, device, loss_function):
                 )
 
     test(model, test_loader, device)
+    
+    return model
 
 def test(model, test_loader, device):
     model.eval()
-    _, eval_accuracy = 0, 0
+    correct_total = 0
 
     with torch.no_grad():
-        for batch in test_loader:
+        for step, batch in enumerate(test_loader):
             b_input_ids = batch[0].to(device)
             b_input_mask = batch[1].to(device)
             b_labels = batch[2].to(device)
 
-            outputs = model(b_input_ids, token_type_ids=None, attention_mask=b_input_mask)
-            logits = outputs[0]
+            outputs = model(b_input_ids, attention_mask=b_input_mask)
+            logits = outputs.logits
             logits = logits.detach().cpu().numpy()
             label_ids = b_labels.to("cpu").numpy()
-            tmp_eval_accuracy = flat_accuracy(logits, label_ids)
-            eval_accuracy += tmp_eval_accuracy
+            correct = number_correct(logits, label_ids)
+            correct_total += correct
+            
+            if step % 10 == 0:
+                print(f'Test step: {step}, Accuracy: [{correct/len(batch[0])}]')
+            
+            
 
-    print("Test set: Accuracy: ", eval_accuracy/len(test_loader.dataset))
+    print("Test set: Accuracy: ", correct_total/len(test_loader.dataset))
 
 if __name__ == "__main__":
     
+    #loss function - custom to allow explicit hook registration with profiler
     loss_function = nn.CrossEntropyLoss()
-    
+        
     model = net()
+    
+    #AdamW optimizer
+    optimizer = AdamW(
+        model.parameters(),
+        lr=learning_rate,  # args.learning_rate - default is 5e-5, our notebook had 2e-5
+        eps=adam_epsilon,  # args.adam_epsilon - default is 1e-8.
+    )
     
     device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(device)
     model = model.to(device)
-    train(model, device, loss_function)
+    model = train(model, device, loss_function, optimizer)
+    
+    torch.save(model.to(torch.device('cpu')).state_dict(), model_save_path)
