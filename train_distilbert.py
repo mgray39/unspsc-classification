@@ -13,10 +13,10 @@ from torch.utils.data import DataLoader, RandomSampler, TensorDataset
 from torch.optim import AdamW
 from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
 
-MAX_LEN = 256
+MAX_LEN = 128
 
 #hyperparameters
-batch_size=128
+batch_size=64
 epochs=1
 learning_rate=2e-5
 adam_epsilon = 1e-8
@@ -130,11 +130,13 @@ def train(model, device, loss_function, optimizer):
         for step, batch in enumerate(train_loader):
             b_input_ids = batch[0].to(device)
             b_input_mask = batch[1].to(device)
-            b_labels = batch[2].to(device)
+            b_labels = batch[2]
+            b_labels = b_labels.type(torch.LongTensor)
+            b_labels = b_labels.to(device)
             model.zero_grad()
 
-            outputs = model(b_input_ids, attention_mask=b_input_mask, labels=b_labels)
-            loss = loss_function(outputs.logits, b_labels)
+            outputs = model(b_input_ids, attention_mask=b_input_mask)
+            loss = loss_function(outputs[0], b_labels)
 
             total_loss += loss.item()
             loss.backward()
@@ -164,10 +166,12 @@ def test(model, test_loader, device):
         for step, batch in enumerate(test_loader):
             b_input_ids = batch[0].to(device)
             b_input_mask = batch[1].to(device)
-            b_labels = batch[2].to(device)
+            b_labels = batch[2]
+            b_labels = b_labels.type(torch.LongTensor)
+            b_labels = b_labels.to(device)
 
             outputs = model(b_input_ids, attention_mask=b_input_mask)
-            logits = outputs.logits
+            logits = outputs[0]
             logits = logits.detach().cpu().numpy()
             label_ids = b_labels.to("cpu").numpy()
             correct = number_correct(logits, label_ids)

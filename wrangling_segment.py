@@ -13,7 +13,7 @@ au_file_list = glob.glob('./data/australia/*.csv')
 test_fraction = 0.2
 
 #level of unspsc to prepare training data for
-code_level = 'segment'
+code_level = 'family'
 
 #hold the required number of classes for segment and family so you can assert later
 code_level_group_count_dict = {'segment': 57,
@@ -41,17 +41,29 @@ def main() -> (pd.DataFrame, pd.DataFrame):
     """
     
     codes_data = prepare_unspsc_codes_data()
-    california_data = prepare_california_data()
-    australia_data = prepare_and_combine_au_files(au_file_list)
+    
+    codes_data_label_names = list(codes_data['label_name'].unique())
+    
+    california_data = (prepare_california_data()
+                       .query('label_name in @codes_data_label_names'))
+    australia_data = (prepare_and_combine_au_files(au_file_list)
+                      .query('label_name in @codes_data_label_names'))
+    
     
     dataset_df = (pd.concat([codes_data, california_data, australia_data])
-                  .assign(label = lambda df: df.groupby(['label_name']).ngroup()))
+                  .assign(label = lambda df: df.groupby(['label_name']).ngroup())
+                  .dropna(how ='any')
+                  .assign(label_name = lambda df: df['label_name'].astype(int),
+                          label = lambda df: df['label'].astype(int)))
     
     dataset_unique_classes = dataset_df['label_name'].nunique()
+    
+    print(dataset_unique_classes)
     
     print('check if code numbers preserved...')
     assert dataset_unique_classes == code_level_group_count_dict[code_level]
     print('pass')
+    
     
     train_df, test_df = train_test_split(dataset_df, test_size=test_fraction, stratify=dataset_df['label'])
     
@@ -195,5 +207,5 @@ if __name__ == '__main__':
     
     train_df, test_df = main()
     
-    train_df.to_csv('./prepared_data/train.csv', encoding ='utf-8',index= False)
-    test_df.to_csv('./prepared_data/test.csv', encoding = 'utf-8', index = False)
+    train_df.to_csv('./prepared_data/family_train.csv', encoding ='utf-8',index = False)
+    test_df.to_csv('./prepared_data/family_test.csv', encoding = 'utf-8', index = False)
