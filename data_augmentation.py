@@ -3,18 +3,16 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 import nlpaug.augmenter.word as naw
-
-original_balance_train_dir = './prepared_data/family_train.csv'
-original_balance_test_dir = './prepared_data/family_test.csv'
-
-output_rebalance_train_dir = './prepared_data/rebalanced/family_train.csv'
-output_rebalance_test_dir = './prepared_data/rebalanced/family_test.csv'
+import argparse
+import os
 
 aug = naw.SynonymAug(aug_src='wordnet')
 
-count_per_class_training = 500
-
-def main():
+def main(count_per_class_training: int,
+         original_balance_train_dir: str,
+         original_balance_test_dir: str,
+         output_rebalance_train_dir: str,
+         output_rebalance_test_dir: str) -> None:
     
     original_train_df = pd.read_csv(original_balance_train_dir)
     
@@ -24,6 +22,7 @@ def main():
     
     pd.concat([pd.read_csv(original_balance_test_dir), unused_train_df]).to_csv(output_rebalance_test_dir, index = False, encoding = 'utf-8')
     
+    return None
 
 
 def augment_to_rebalance(df: pd.DataFrame,  threshold: int) -> (pd.DataFrame, pd.DataFrame):
@@ -34,7 +33,7 @@ def augment_to_rebalance(df: pd.DataFrame,  threshold: int) -> (pd.DataFrame, pd
                 .rename(columns = {'label_name': 'count'}))
     
     over_threshold_labels = count_df.query('count>@threshold')['label'].to_list()
-    on_taget_labels = count_df.query('count>@threshold')['label'].to_list()
+    on_taget_labels = count_df.query('count==@threshold')['label'].to_list()
     under_threshold_labels = count_df.query('count<@threshold')['label'].to_list()
     
     #if it has *exactly* the target value... yes, this actually came up
@@ -100,4 +99,52 @@ def augment_df_to_value(df: pd.DataFrame, string_column: str, threshold: int, au
 
 if __name__ == '__main__':
     
-    main()
+    parser = argparse.ArgumentParser()
+
+    # Data and model checkpoints directories
+    parser.add_argument(
+        "--augmentation-value",
+        type=int,
+        default=500,
+        metavar="N",
+        help="The number of training data points to obtain for all classes",
+    )
+    
+    parser.add_argument(
+        "--original-train-file",
+        type=str,
+        default='./prepared_data/family_train.csv',
+        metavar="N",
+        help="Location of the training data with the original test-train split",
+    )
+    
+    parser.add_argument(
+        "--original-test-file",
+        type=str,
+        default='./prepared_data/family_test.csv',
+        metavar="N",
+        help="Location of the training data with the original test-train split",
+    )
+    
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default='./prepared_data/rebalanced/',
+        metavar="N",
+        help="Location of the training data with the original test-train split",
+    )
+    
+    parser.add_argument(
+        "--lr", type=float, default=0.01, metavar="LR", help="learning rate (default: 0.01)"
+    )
+    
+    args = parser.parse_args()
+    
+    count_per_class_training = args.augmentation_value
+    original_balance_train_dir = args.original_train_file    
+    original_balance_test_dir = args.original_test_file
+    
+    output_rebalance_train_dir = os.path.join(args.output_dir, 'train.csv')
+    output_rebalance_test_dir = os.path.join(args.output_dir, 'test.csv')
+    
+    main(count_per_class_training, original_balance_train_dir, original_balance_test_dir, output_rebalance_train_dir, output_rebalance_test_dir)
