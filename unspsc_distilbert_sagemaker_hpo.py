@@ -185,11 +185,11 @@ def test(model, test_loader, device):
             bal_acc_tot += bal_acc
             
             if step % 10 == 0:
-                logger.info(f'Test step: {step}, Accuracy: {correct/len(batch[0])}, Balanced Accuracy: {bal_acc/len(batch[0])}')
+                logger.info(f'Test step: {step}, Accuracy: {correct/len(batch[0])}, Balanced Accuracy: {bal_acc}')
             
             
 
-    logger.info(f"Test set: Accuracy:  {correct_total/len(test_loader.dataset)} Balanced Accuracy Final: {bal_acc_tot/len(test_loader.dataset)}")
+    logger.info(f"Test set: Accuracy:  {correct_total/len(test_loader.dataset)} Balanced Accuracy Final: {bal_acc_tot/len(test_loader)}")
     
     return model
     
