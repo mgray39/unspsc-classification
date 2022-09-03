@@ -12,8 +12,11 @@ from torch import nn
 from torch.utils.data import DataLoader, RandomSampler, TensorDataset
 from torch.optim import AdamW
 from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
+from sklearn.metrics import balanced_accuracy_score
 import argparse
 import logging
+
+
 
 #standard logging config
 logger = logging.getLogger(__name__)
@@ -31,9 +34,9 @@ def number_correct(preds, labels):
     return np.sum(pred_flat == labels_flat)
 
 
-def get_train_data_loader(batch_size):
+def get_train_data_loader(data_path, batch_size):
     logger.info('get training data loader')
-    training_data = pd.read_csv(os.path.join("prepared_data", "train.csv"))
+    training_data = pd.read_csv(os.path.join(data_path, "train.csv"))
     descriptions = training_data.description.values
     labels = training_data.label.values
 
@@ -69,9 +72,9 @@ def get_train_data_loader(batch_size):
     return train_dataloader
 
 
-def get_test_data_loader(test_batch_size):
+def get_test_data_loader(data_path, test_batch_size):
     logger.info('get test data loader')
-    test_data = pd.read_csv(os.path.join("prepared_data", "test.csv"))
+    test_data = pd.read_csv(os.path.join(data_path, "test.csv"))
     descriptions = test_data.description.values
     labels = test_data.label.values
 
@@ -162,6 +165,7 @@ def test(model, test_loader, device):
     logger.info('begin evaluation...')
     model.eval()
     correct_total = 0
+    bal_acc_tot = 0
 
     with torch.no_grad():
         for step, batch in enumerate(test_loader):
@@ -177,13 +181,15 @@ def test(model, test_loader, device):
             label_ids = b_labels.to("cpu").numpy()
             correct = number_correct(logits, label_ids)
             correct_total += correct
+            bal_acc = balanced_accuracy_score(label_ids, np.argmax(logits, axis=1).flatten())
+            bal_acc_tot += bal_acc
             
             if step % 10 == 0:
-                logger.info(f'Test step: {step}, Accuracy: [{correct/len(batch[0])}]')
+                logger.info(f'Test step: {step}, Accuracy: {correct/len(batch[0])}, Balanced Accuracy: {bal_acc/len(batch[0])}')
             
             
 
-    logger.info("Test set: Accuracy: ", correct_total/len(test_loader.dataset))
+    logger.info(f"Test set: Accuracy:  {correct_total/len(test_loader.dataset)} Balanced Accuracy Final: {bal_acc_tot/len(test_loader.dataset)}")
     
     return model
     
@@ -191,8 +197,8 @@ def test(model, test_loader, device):
 def main(args):
     
     #get train loaders
-    train_loader = get_train_data_loader(args.batch_size)
-    test_loader = get_test_data_loader(args.batch_size)
+    train_loader = get_train_data_loader(args.data_dir, args.batch_size)
+    test_loader = get_test_data_loader(args.data_dir, args.batch_size)
     
     #loss function - custom to allow explicit hook registration with profiler
     loss_function = nn.CrossEntropyLoss()
@@ -212,7 +218,9 @@ def main(args):
     model = model.to(device)
     model = train(model, device, loss_function, optimizer, args.epochs, train_loader, test_loader)
     
-    torch.save(model.to(torch.device('cpu')).state_dict(), args.model_dir)
+    model_save_path = os.path.join(args.model_dir, 'model.pth')
+    
+    torch.save(model.to(torch.device('cpu')).state_dict(), model_save_path)
     
     
 
@@ -249,7 +257,7 @@ if __name__ == "__main__":
         "--eps", 
         type=float, 
         default=1e-8, 
-        metavar="LR",
+        metavar="EPS",
         help="epsilon (default: 1e-8)"
     )
     
@@ -262,7 +270,7 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    main()
+    main(args)
     
  
     
