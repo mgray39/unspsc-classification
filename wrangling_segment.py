@@ -1,6 +1,8 @@
 import pandas as pd
+import numpy as np
 from sklearn.model_selection import train_test_split
 import glob
+import unicodedata
 
 #file_paths 
 unspsc_codes_path = './data/codes/data-unspsc-codes.csv'
@@ -12,8 +14,10 @@ au_file_list = glob.glob('./data/australia/*.csv')
 #size of test set
 test_fraction = 0.2
 
+summarise_class_count = 7
+
 #level of unspsc to prepare training data for
-code_level = 'family'
+code_level = 'segment'
 
 #hold the required number of classes for segment and family so you can assert later
 code_level_group_count_dict = {'segment': 57,
@@ -51,21 +55,35 @@ def main() -> (pd.DataFrame, pd.DataFrame):
     
     
     dataset_df = (pd.concat([codes_data, california_data, australia_data])
-                  .assign(label = lambda df: df.groupby(['label_name']).ngroup())
+                  .assign(label = lambda df: df.groupby(['label_name']).ngroup(),
+                          description = lambda df: string_cleaning(df['description']))
                   .dropna(how ='any')
                   .assign(label_name = lambda df: df['label_name'].astype(int),
                           label = lambda df: df['label'].astype(int)))
+    
+    test_class_value = code_level_group_count_dict[code_level]
+    
+    if summarise_class_count is not None:
+        dataset_df = (summarise_classes(dataset_df, summarise_class_count, 'label_name')
+                      .assign(label = lambda df: df.groupby(['label_name']).ngroup())
+                      .dropna(how ='any')
+                      .assign(label_name = lambda df: df['label_name'].astype(int),
+                              label = lambda df: df['label'].astype(int))
+                      .dropna())
+        
+        test_class_value = summarise_class_count
+    
     
     dataset_unique_classes = dataset_df['label_name'].nunique()
     
     print(dataset_unique_classes)
     
     print('check if code numbers preserved...')
-    assert dataset_unique_classes == code_level_group_count_dict[code_level]
+    assert dataset_unique_classes == test_class_value
     print('pass')
     
     
-    train_df, test_df = train_test_split(dataset_df, test_size=test_fraction, stratify=dataset_df['label'])
+    train_df, test_df = train_test_split(dataset_df.dropna(), test_size=test_fraction, stratify=dataset_df['label'])
     
     return (train_df, test_df)
     
@@ -201,11 +219,47 @@ def unspsc_level_selector(code_series: pd.Series, code_level: str) -> pd.Series:
                    .where(code_series.str[select-2:select]!='00', None))
     
     return code_series
+
+
+def summarise_classes(df:pd.DataFrame, super_class_count: int, class_name: str = 'label_name') -> pd.DataFrame:
+    df['super_class'] = None
+    
+    unique_classes = df.sort_values(class_name)[class_name].unique()
+    
+    group_length = len(unique_classes)//(super_class_count-1)
+    for i in range(0,super_class_count):
+        group_classes = unique_classes[i*group_length:np.min([(i+1)*group_length, len(unique_classes)])]
+        df.loc[df[class_name].isin(group_classes), 'super_class'] = i
+    
+    df = (df
+          .drop(columns = ['label_name'])
+          .rename(columns = {'super_class':'label_name'}))
+    
+    return df
+
+    
+def remove_accents(input_str: str) -> str:
+    nfkd_form = unicodedata.normalize('NFKD', input_str)
+    only_ascii = nfkd_form.encode('ASCII', 'ignore')
+    
+    return only_ascii.decode()
+
+
+def string_cleaning(string_series: pd.Series) -> pd.Series:
+    
+    clean_series = (string_series
+                    .astype(str)
+                    .str.replace('[^\w\s]',' ', regex=True)
+                    .str.replace('\n', ' ')
+                    .str.replace(r'[\s+]', ' ', regex=True)
+                    .apply(remove_accents))
+    
+    return clean_series
     
     
 if __name__ == '__main__':
     
     train_df, test_df = main()
     
-    train_df.to_csv('./prepared_data/family_train.csv', encoding ='utf-8',index = False)
-    test_df.to_csv('./prepared_data/family_test.csv', encoding = 'utf-8', index = False)
+    train_df.to_csv('./prepared_data/super_train.csv', encoding ='utf-8',index = False)
+    test_df.to_csv('./prepared_data/super_test.csv', encoding = 'utf-8', index = False)
