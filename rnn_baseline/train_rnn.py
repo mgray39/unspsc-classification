@@ -11,6 +11,14 @@ from sklearn.metrics import balanced_accuracy_score
 from torch.optim import AdamW
 import argparse
 import os
+import logging
+import boto3
+
+
+#standard logging config
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler(sys.stdout))
     
 
 def get_data_loaders(train_file_path: str, test_file_path: str, batch_size: int, max_words: int = 64, string_column: str = 'description'):
@@ -58,7 +66,7 @@ def get_data_loaders(train_file_path: str, test_file_path: str, batch_size: int,
 def train(model, device, loss_function, optimizer, train_loader, test_loader, epochs):
     
     for epoch in range(1, epochs + 1):
-        print(f'current epoch: {epoch}')
+        logger.info(f'current epoch: {epoch}')
         total_loss = 0
         model.train()
         for step, batch in enumerate(train_loader):
@@ -79,7 +87,7 @@ def train(model, device, loss_function, optimizer, train_loader, test_loader, ep
             # modified based on their gradients, the learning rate, etc.
             optimizer.step()
             if step % 10  == 0:
-                print(
+                logger.info(
                     "Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f}".format(
                         epoch,
                         step * len(batch[0]),
@@ -113,9 +121,9 @@ def test(model, test_loader, device):
             bal_acc_tot += bal_acc
             
             if step % 10 == 0:
-                print(f'Test step: {step}, Accuracy: {correct/len(batch[0])}, Balanced Accuracy: {bal_acc}')
+                logger.info(f'Test step: {step}, Accuracy: {correct/len(batch[0])}, Balanced Accuracy: {bal_acc}')
 
-    print(f"Test set: Accuracy:  {correct_total/len(test_loader.dataset)} Balanced Accuracy: {bal_acc_tot/len(test_loader)}")
+    logger.info(f"Test set: Accuracy:  {correct_total/len(test_loader.dataset)} Balanced Accuracy: {bal_acc_tot/len(test_loader)}")
     
     return model
 
