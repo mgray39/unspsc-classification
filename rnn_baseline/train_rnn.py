@@ -13,6 +13,8 @@ import argparse
 import os
 import logging
 import boto3
+import sys
+import json
 
 
 #standard logging config
@@ -21,7 +23,7 @@ logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.StreamHandler(sys.stdout))
     
 
-def get_data_loaders(train_file_path: str, test_file_path: str, batch_size: int, max_words: int = 64, string_column: str = 'description'):
+def get_data_loaders(train_file_path: str, test_file_path: str, batch_size: int, tokenizer, max_words: int = 64, string_column: str = 'description'):
     
     train = (pd.read_csv(train_file_path))
     test = (pd.read_csv(test_file_path))
@@ -136,10 +138,13 @@ class RNNClassifier(nn.Module):
                           batch_first=True, nonlinearity="relu", dropout=dropout)
         self.linear = nn.Linear(hidden_dim, len(target_classes))
         self.device = device
+        self.n_layers = n_layers
+        self.hidden_dim = hidden_dim
+        
 
     def forward(self, X_batch):
         embeddings = self.embedding_layer(X_batch)
-        output, hidden = self.rnn(embeddings, torch.randn(n_layers, len(X_batch), hidden_dim).to(self.device))
+        output, hidden = self.rnn(embeddings, torch.randn(self.n_layers, len(X_batch), self.hidden_dim).to(self.device))
         return self.linear(output[:,-1])    
     
     
@@ -176,6 +181,7 @@ def main(args: argparse.ArgumentParser) -> None:
     
     train_loader, test_loader, vocab = get_data_loaders(train_file_path=train_file_path, 
                                                         test_file_path=train_file_path, 
+                                                        tokenizer=tokenizer,
                                                         batch_size=args.batch_size, 
                                                         max_words=args.max_words)    
     
