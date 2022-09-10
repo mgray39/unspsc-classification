@@ -9,10 +9,12 @@ from torch import nn
 from torch.nn import functional as F
 from sklearn.metrics import balanced_accuracy_score
 from torch.optim import AdamW
-
+import argparse
+import os
     
 
 def get_data_loaders(train_file_path: str, test_file_path: str, batch_size: int, max_words: int = 64, string_column: str = 'description'):
+    
     train = (pd.read_csv(train_file_path))
     test = (pd.read_csv(test_file_path))
     
@@ -39,8 +41,6 @@ def get_data_loaders(train_file_path: str, test_file_path: str, batch_size: int,
     data_test = to_map_style_dataset(test[['label','vocab']].to_records(index=False))
     data_train = to_map_style_dataset(train[['label','vocab']].to_records(index=False))
     
-    
-    
     def vectorize_batch(batch):
         Y, X = list(zip(*batch))
         X = [tokens+([0]* (max_words-len(tokens))) if len(tokens)<max_words else tokens[:max_words] for tokens in X] ## Bringing all samples to max_words length.
@@ -55,8 +55,7 @@ def get_data_loaders(train_file_path: str, test_file_path: str, batch_size: int,
     return train_loader, test_loader, vocab
 
 
-def train(model, device, loss_function, optimizer, train_loader, test_loader):
-    
+def train(model, device, loss_function, optimizer, train_loader, test_loader, epochs):
     
     for epoch in range(1, epochs + 1):
         print(f'current epoch: {epoch}')
@@ -94,6 +93,7 @@ def train(model, device, loss_function, optimizer, train_loader, test_loader):
     
     return model
 
+
 def test(model, test_loader, device):
     model.eval()
     correct_total = 0
@@ -119,12 +119,13 @@ def test(model, test_loader, device):
     
     return model
 
+
 class RNNClassifier(nn.Module):
-    def __init__(self, device: str, target_classes: list, embed_len: int, vocab, hidden_dim: int, n_layers: int):
+    def __init__(self, device: str, target_classes: list, embed_len: int, vocab, hidden_dim: int, n_layers: int, dropout = float):
         super(RNNClassifier, self).__init__()
         self.embedding_layer = nn.Embedding(num_embeddings=len(vocab), embedding_dim=embed_len)
         self.rnn = nn.RNN(input_size=embed_len, hidden_size=hidden_dim, num_layers=n_layers, 
-                          batch_first=True, nonlinearity="relu", dropout=0.2)
+                          batch_first=True, nonlinearity="relu", dropout=dropout)
         self.linear = nn.Linear(hidden_dim, len(target_classes))
         self.device = device
 
@@ -150,52 +151,120 @@ def build_vocab_from_train_test_data(dataset_list: list, string_column: str):
     
     return vocab
 
+
 def number_correct(preds, labels):
     pred_flat = np.argmax(preds, axis=1).flatten()
     labels_flat = labels.flatten()
     return np.sum(pred_flat == labels_flat)
 
 
-if __name__ =='__main__':
+def main(args: argparse.ArgumentParser) -> None:
+    
     
     tokenizer = get_tokenizer("basic_english")
     
-    train_file_path = 'prepared_data/super_train.csv'
-    test_file_path = 'prepared_data/super_test.csv'
-    
-    batch_size = 1024
-    max_words = 64
+    train_file_path = os.path.join(args.data_dir, 'train.csv')
+    test_file_path = os.path.join(args.data_dir, 'test.csv')
     
     train_loader, test_loader, vocab = get_data_loaders(train_file_path=train_file_path, 
                                                         test_file_path=train_file_path, 
-                                                        batch_size=batch_size, 
-                                                        max_words=max_words)    
+                                                        batch_size=args.batch_size, 
+                                                        max_words=args.max_words)    
     
     
-    embed_len = 32
-    hidden_dim = 50
-    n_layers=3
     
-    num_classes = 57
-    
-    target_classes = list(range(num_classes))
-    
-    epochs = 200
-    learning_rate = 1e-3
+    target_classes = list(range(args.num_classes))
     
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
     loss_fn = nn.CrossEntropyLoss()
     rnn_classifier = RNNClassifier(device = device, 
                                    target_classes = target_classes, 
-                                   embed_len = embed_len, 
+                                   embed_len = args.embed_len, 
                                    vocab = vocab,
-                                   hidden_dim = hidden_dim,
-                                   n_layers = n_layers).to(device)
+                                   hidden_dim = args.hidden_dim,
+                                   n_layers = args.n_layers,
+                                   dropout = args.dropout).to(device)
     
-    optimizer = AdamW(rnn_classifier.parameters(), lr=learning_rate)
+    optimizer = AdamW(rnn_classifier.parameters(), lr=args.lr)
     
-    rnn_classifier = train(rnn_classifier, device, loss_fn, optimizer, train_loader, test_loader)
+    rnn_classifier = train(rnn_classifier, device, loss_fn, optimizer, train_loader, test_loader, args.epochs)
+    
+    model_save_path = os.path.join(args.model_dir, 'model.pth')
+    
+    torch.save(rnn_classifier.to(torch.device('cpu')).state_dict(), model_save_path)
+    
+    return None
+    
 
-
+if __name__ =='__main__':
+    
+    parser = argparse.ArgumentParser()
+    
+    parser.add_argument(
+        '--batch-size',
+        type = int,
+        default = 1024,
+        help = 'The batch size for the model.')
+    
+    parser.add_argument(
+        '--embed-len',
+        type = int,
+        default = 32,
+        help = 'The length of the embedding used by the RNN')
+    
+    parser.add_argument(
+        '--hidden-dim',
+        type = int,
+        default = 50,
+        help = 'The number of nodes in the hidden layer of the RNN network.')
+    
+    parser.add_argument(
+        '--n-layers',
+        type = int,
+        default = 3,
+        help = 'The number of hidden layers of the RNN.')
+    
+    parser.add_argument(
+        '--dropout',
+        type = float,
+        default = 0.2,
+        help = 'The network dropout probabilty of each hidden layer.')
+    
+    parser.add_argument(
+        '--num_classes',
+        type = int,
+        default = 57,
+        help = 'The number of output classes for the RNN. Default will work for segment UNSPSC classification but will fail in all other cases.')
+    
+    parser.add_argument(
+        '--max-words',
+        type = int,
+        default = 64,
+        help = 'The maximum length of strings to be considered by the RNN. Any words beyond the length of the max-words value will be truncated.')
+    
+    parser.add_argument(
+        '--lr',
+        type = float,
+        default = 1e-3,
+        help = 'The learning rate of the RNN. ')
+    
+    parser.add_argument(
+        '--epochs',
+        type = int,
+        default = 200,
+        help = 'The number of epochs over which to train the RNN.')
+    
+    # Container environment
+    parser.add_argument("--hosts", type=list, default=json.loads(os.environ["SM_HOSTS"]))
+    parser.add_argument("--current-host", type=str, default=os.environ["SM_CURRENT_HOST"])
+    parser.add_argument("--model-dir", type=str, default=os.environ["SM_MODEL_DIR"])
+    parser.add_argument("--data-dir", type=str, default=os.environ["SM_CHANNEL_TRAINING"])
+    parser.add_argument("--num-gpus", type=int, default=os.environ["SM_NUM_GPUS"])
+    
+    args = parser.parse_args()
+    
+    main(args)
+    
+    
 

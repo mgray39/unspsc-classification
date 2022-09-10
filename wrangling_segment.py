@@ -2,41 +2,26 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 import glob
+import os
 import unicodedata
+import argparse
+import requests
 
-#file_paths 
-unspsc_codes_path = './data/codes/data-unspsc-codes.csv'
-california_file_path = './data/california/purchase-order-data-2012-2015-.csv'
+hit_dict = {'codes':['https://data.ok.gov/dataset/18a622a6-32d1-48f6-842a-8232bc4ca06c/resource/b92ad3ac-b0f5-4c62-9bd0-eac023cfd083/download/data-unspsc-codes.csv'],
+            'california': ['https://data.ca.gov/dataset/ae343670-f827-4bc8-9d44-2af937d60190/resource/bb82edc5-9c78-44e2-8947-68ece26197c5/download/purchase-order-data-2012-2015-.csv'],
+            'australia': ['https://data.gov.au/data/dataset/5c7fa69b-b0e9-4553-b8df-2a022dd2e982/resource/561a549b-5a65-450e-86cf-81d392d8fef3/download/20142015fy.csv',
+                          'https://data.gov.au/data/dataset/5c7fa69b-b0e9-4553-b8df-2a022dd2e982/resource/21212500-169f-4745-86b3-6ac1c1174151/download/2016-2017-australian-government-contract-data.csv',
+                         'https://data.gov.au/data/dataset/5c7fa69b-b0e9-4553-b8df-2a022dd2e982/resource/bc2097b7-8116-4e9d-9953-98813635892a/download/17-18-fy-dataset.csv',
+                         ]}
 
-# get all csv_files in australia directory
-au_file_list = glob.glob('./data/australia/*.csv')
 
-#size of test set
-test_fraction = 0.2
-
-summarise_class_count = 7
-
-#level of unspsc to prepare training data for
-code_level = 'segment'
 
 #hold the required number of classes for segment and family so you can assert later
 code_level_group_count_dict = {'segment': 57,
-                               'family': 465}
-
-#based on the code level, set variables for extraction of information from the code information
-if code_level == 'segment':
-    unspsc_codes_segment_column = ['Segment']
-    unspsc_codes_strings_columns_for_concat = ['Family Name', 'Class Name', 'Commodity Name']
-    
-elif code_level == 'family':
-    unspsc_codes_segment_column = ['Family']
-    unspsc_codes_strings_columns_for_concat = ['Class Name', 'Commodity Name']
-
-else:
-    raise ValueError('code_level is not recognised as either "family" or "segment". Please check the value and retry.')
+                                   'family': 465}
 
     
-def main() -> (pd.DataFrame, pd.DataFrame):
+def main(args) -> (pd.DataFrame, pd.DataFrame):
     """
     Main Function:
     
@@ -44,13 +29,39 @@ def main() -> (pd.DataFrame, pd.DataFrame):
     
     """
     
-    codes_data = prepare_unspsc_codes_data()
+    if not os.path.exists('./prepared_data/'):
+        os.mkdir('./prepared_data/')
     
+    if args.download:
+        download_files_if_not_present(hit_dict)
+    
+    #file_paths 
+    unspsc_codes_path = args.unspsc_codes_path
+    california_file_path = args.california_file_path
+    
+    # get all csv_files in australia directory
+    au_file_list = glob.glob(f'{args.au_file_dir}/*.csv')
+    
+    #size of test set
+    test_fraction = args.test_fraction
+    
+    if args.summarise_class_count ==0:
+        summarise_class_count = None
+    else:
+        summarise_class_count = args.summarise_class_count
+    
+    #level of unspsc to prepare training data for
+    code_level = args.code_level
+    
+    codes_data = prepare_unspsc_codes_data(unspsc_codes_path, code_level)
+    
+    #hold the label names for later checking
     codes_data_label_names = list(codes_data['label_name'].unique())
     
-    california_data = (prepare_california_data()
+    california_data = (prepare_california_data(california_file_path, code_level)
                        .query('label_name in @codes_data_label_names'))
-    australia_data = (prepare_and_combine_au_files(au_file_list)
+    
+    australia_data = (prepare_and_combine_au_files(au_file_list, code_level)
                       .query('label_name in @codes_data_label_names'))
     
     
@@ -88,11 +99,44 @@ def main() -> (pd.DataFrame, pd.DataFrame):
     return (train_df, test_df)
     
 
-def prepare_unspsc_codes_data(unspsc_codes_path: str = unspsc_codes_path) -> pd.DataFrame:
+def download_files_if_not_present(hit_dict: dict)->None:
+    
+    if not os.path.exists('./data'):
+        os.mkdir(f'./data')
+    
+    for folder, url_list in hit_dict.items():
+        
+        if not os.path.exists(f'./data/{folder}'):
+            os.mkdir(f'./data/{folder}')
+            
+        for url in url_list:
+            file_name = url.split('/')[-1]
+            full_path = f'./data/{folder}/{file_name}'
+            print(f'downloading {url} to {full_path}')
+            with open(full_path, 'wb') as f:
+                f.write(requests.get(url).content)
+            print('    done')
+            
+    return None
+
+    
+def prepare_unspsc_codes_data(unspsc_codes_path: str,
+                              code_level: str) -> pd.DataFrame:
     """
     Function which reads and cleans the UNSPSC code data to use as a source for training based upon the inputs
     """
     
+    #based on the code level, set variables for extraction of information from the code information
+    if code_level == 'segment':
+        unspsc_codes_segment_column = ['Segment']
+        unspsc_codes_strings_columns_for_concat = ['Family Name', 'Class Name', 'Commodity Name']
+    
+    elif code_level == 'family':
+        unspsc_codes_segment_column = ['Family']
+        unspsc_codes_strings_columns_for_concat = ['Class Name', 'Commodity Name']
+
+    else:
+        raise ValueError('code_level is not recognised as either "family" or "segment". Please check the value and retry.')
     
     df = (pd.read_csv(unspsc_codes_path, encoding = 'latin-1')
           .pipe(concatenate_and_remove, unspsc_codes_strings_columns_for_concat, unspsc_codes_segment_column)
@@ -119,8 +163,8 @@ def concatenate_and_remove(df: pd.DataFrame,
     return df
 
 
-def prepare_california_data(california_file_path: str = california_file_path, 
-                            code_level: str = code_level) -> pd.DataFrame:
+def prepare_california_data(california_file_path: str, 
+                            code_level: str) -> pd.DataFrame:
     
     columns = ['Normalized UNSPSC', 'Item Name', 'Item Description']
     
@@ -142,7 +186,7 @@ def prepare_california_data(california_file_path: str = california_file_path,
 
 
 def prepare_au_procurement_file(au_procurement_file_path: str, 
-                               code_level: str = code_level) -> pd.DataFrame:
+                               code_level: str) -> pd.DataFrame:
     """
     First let me say as an Australian: --- bloody hell, Australia! What are you playing at?!
     
@@ -184,7 +228,7 @@ def prepare_au_procurement_file(au_procurement_file_path: str,
 
 
 def prepare_and_combine_au_files(au_file_path_list: list, 
-                                 code_level: str = code_level) -> pd.DataFrame:
+                                 code_level: str) -> pd.DataFrame:
     """
     Function to read all of the Australian data.
     
@@ -259,7 +303,67 @@ def string_cleaning(string_series: pd.Series) -> pd.Series:
     
 if __name__ == '__main__':
     
-    train_df, test_df = main()
+    parser = argparse.ArgumentParser()
     
-    train_df.to_csv('./prepared_data/super_train.csv', encoding ='utf-8',index = False)
-    test_df.to_csv('./prepared_data/super_test.csv', encoding = 'utf-8', index = False)
+    parser.add_argument(
+       '--unspsc-codes-path',
+       type = str,
+       default = './data/codes/data-unspsc-codes.csv',
+       help = 'The file path of the unspsc codes data. Download from "https://data.ok.gov/dataset/18a622a6-32d1-48f6-842a-8232bc4ca06c/resource/b92ad3ac-b0f5-4c62-9bd0-eac023cfd083/download/data-unspsc-codes.csv"')
+    
+    parser.add_argument(
+       '--california-file-path',
+       type = str,
+       default = './data/california/purchase-order-data-2012-2015-.csv',
+       help = 'The file path of the california purchase data with unspsc codes. Download from "https://data.ca.gov/dataset/ae343670-f827-4bc8-9d44-2af937d60190/resource/bb82edc5-9c78-44e2-8947-68ece26197c5/download/purchase-order-data-2012-2015-.csv"')
+    
+    parser.add_argument(
+       '--au-file-dir',
+       type = str,
+       default = './data/australia/',
+       help = 'Path to the directory which contains the 3 australian purchasing datasets. Download from "https://data.gov.au/dataset/ds-dga-5c7fa69b-b0e9-4553-b8df-2a022dd2e982"')
+    
+    parser.add_argument(
+        '--download',
+        default = False,
+        action = 'store_true',
+        help = 'Pass this flag to turn on downloading the dataset. Downloads data to ./data of the working directory.')
+    
+    parser.add_argument(
+        '--test-fraction',
+        type = float,
+        default = 0.2,
+        help = 'The test split of the dataset. Default is 0.2 (20%)')
+    
+    parser.add_argument(
+        '--summarise_class_count',
+        type = int,
+        default = 0,
+        help = 'The number of classes to summarise the provided classes into. This is used for hierarchical cluster fitting which is not completely implemented yet. Passing 0 which is default will result in no summarising of the classes.')
+    
+    parser.add_argument(
+        '--code-level',
+        type = str,
+        default = 'segment',
+        help = "Choice of either 'segment' or 'family' to create the training data.")
+    
+    parser.add_argument(
+        '--train-file-path',
+        type = str,
+        default = './prepared_data/train.csv',
+        help = 'Train file path for file output. Default is in ./prepared_data')
+    
+    parser.add_argument(
+        '--test-file-path', 
+        type = str, 
+        default = './prepared_data/test.csv',
+        help = 'Test file path for file output. Default is in ./prepared_data')
+    
+    args = parser.parse_args()
+    
+    
+    
+    train_df, test_df = main(args)
+    
+    train_df.to_csv(args.train_file_path, encoding ='utf-8',index = False)
+    test_df.to_csv(args.test_file_path, encoding = 'utf-8', index = False)

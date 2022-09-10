@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import argparse
 
 import numpy as np
 import pandas as pd
@@ -12,17 +13,13 @@ from torch import nn
 from torch.utils.data import DataLoader, RandomSampler, TensorDataset
 from torch.optim import AdamW
 from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
+from sklearn.metrics import balanced_accuracy_score
+
+import smdebug.pytorch as smd
+from smdebug import modes
+from smdebug.pytorch import get_hook
 
 MAX_LEN = 128
-
-#hyperparameters
-batch_size=64
-epochs=1
-learning_rate=2e-5
-adam_epsilon = 1e-8
-
-#save path for later use
-model_save_path = f'./models/unspsc_distibert_batch_{batch_size}_epochs_{1}_lr_{learning_rate}_eps_{adam_epsilon}.pth'
 
 #distilbert tokenizer - distilbert uncased
 tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
@@ -119,10 +116,11 @@ def net():
     return model
     
 
-def train(model, device, loss_function, optimizer):
-    train_loader = get_train_data_loader(batch_size)
-    test_loader = get_test_data_loader(batch_size)
-
+def train(model, device, loss_function, optimizer, epochs, train_loader, test_loader, hook):
+    
+    if hook:
+        hook.set_mode(modes.EVAL)
+    
     for epoch in range(1, epochs + 1):
         print(f'current epoch: {epoch}')
         total_loss = 0
@@ -143,6 +141,7 @@ def train(model, device, loss_function, optimizer):
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             # modified based on their gradients, the learning rate, etc.
             optimizer.step()
+            
             if step % 10  == 0:
                 print(
                     "Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f}".format(
@@ -153,12 +152,17 @@ def train(model, device, loss_function, optimizer):
                         loss.item(),
                     )
                 )
-
-    test(model, test_loader, device)
+                
+        #run a test at the end of each epoch to allow evaluation of model loss
+        model = test(model, test_loader, device, hook)
     
     return model
 
-def test(model, test_loader, device):
+def test(model, test_loader, device, hook):
+    
+    if hook:
+        hook.set_mode(modes.EVAL)
+    
     model.eval()
     correct_total = 0
 
@@ -176,31 +180,95 @@ def test(model, test_loader, device):
             label_ids = b_labels.to("cpu").numpy()
             correct = number_correct(logits, label_ids)
             correct_total += correct
+            bal_acc = balanced_accuracy_score(label_ids, np.argmax(logits, axis=1).flatten())
+            bal_acc_tot += bal_acc
             
             if step % 10 == 0:
-                print(f'Test step: {step}, Accuracy: [{correct/len(batch[0])}]')
+                print(f'Test step: {step}, Accuracy: {correct/len(batch[0])}, Balanced Accuracy: {bal_acc}')
             
             
 
     print("Test set: Accuracy: ", correct_total/len(test_loader.dataset))
+    
+    return model
 
-if __name__ == "__main__":
+
+def main(args):
+    
+    #get smdebug logging hook
+    hook = smd.Hook.create_from_json_file()
+    
+    #get train loaders
+    train_loader = get_train_data_loader(args.data_dir, args.batch_size)
+    test_loader = get_test_data_loader(args.data_dir, args.batch_size)
     
     #loss function - custom to allow explicit hook registration with profiler
     loss_function = nn.CrossEntropyLoss()
-        
+    
+    #initialise network
     model = net()
     
     #AdamW optimizer
     optimizer = AdamW(
         model.parameters(),
-        lr=learning_rate,  # args.learning_rate - default is 5e-5, our notebook had 2e-5
-        eps=adam_epsilon,  # args.adam_epsilon - default is 1e-8.
+        lr=args.lr,  # args.learning_rate - default is 5e-5, our notebook had 2e-5
+        eps=args.eps,  # args.adam_epsilon - default is 1e-8.
     )
     
+    hook.register_hook(model)
+    hook.register_loss(loss_function)
+    
     device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print(device)
+    logger.info(f'Using: {device}')
     model = model.to(device)
-    model = train(model, device, loss_function, optimizer)
+    model = train(model, device, loss_function, optimizer, args.epochs, train_loader, test_loader, hook)
+    
+    model_save_path = os.path.join(args.model_dir, 'model.pth')
     
     torch.save(model.to(torch.device('cpu')).state_dict(), model_save_path)
+    
+    
+    
+if __name__ == "__main__":
+    
+    parser = argparse.ArgumentParser()
+    
+    # Data and model checkpoints directories
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=64,
+    parser.add_argument("--model-dir", type=str, default=os.environ["SM_MODEL_DIR"])
+        metavar="N",
+        help="input batch size for training (default: 64)",
+    )
+    
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=1,
+        metavar="N",
+        help="number of epochs to train (default: 11)",
+    )
+    
+    parser.add_argument(
+        "--lr", 
+        type=float, 
+        default=2e-5, 
+        metavar="LR",
+        help="learning rate (default: 0.01)"
+    )
+    
+    parser.add_argument(
+        "--eps", 
+        type=float, 
+        default=1e-8, 
+        metavar="EPS",
+        help="epsilon (default: 1e-8)"
+    )
+    
+    parser.add_argument("--model-dir", type=str, default=os.environ["SM_MODEL_DIR"])
+    
+    args = parser.parse_args()
+    
+    main(args)

@@ -12,20 +12,25 @@ def main(count_per_class_training: int,
          original_balance_train_dir: str,
          original_balance_test_dir: str,
          output_rebalance_train_dir: str,
-         output_rebalance_test_dir: str) -> None:
+         output_rebalance_test_dir: str,
+         mode: str) -> None:
     
     original_train_df = pd.read_csv(original_balance_train_dir)
     
-    rebalanced_train_df, unused_train_df = augment_to_rebalance(original_train_df, count_per_class_training)
+    rebalanced_train_df, unused_train_df = augment_to_rebalance(original_train_df, count_per_class_training, mode)
     
     rebalanced_train_df.to_csv(output_rebalance_train_dir, index = False, encoding = 'utf-8')
     
-    pd.concat([pd.read_csv(original_balance_test_dir), unused_train_df]).to_csv(output_rebalance_test_dir, index = False, encoding = 'utf-8')
+    if unused_train_df is not None:
+        pd.concat([pd.read_csv(original_balance_test_dir), unused_train_df]).to_csv(output_rebalance_test_dir, index = False, encoding = 'utf-8')
+        
+    else:
+        pd.read_csv(original_balance_test_dir).to_csv(output_rebalance_test_dir, index = False, encoding = 'utf-8')
     
     return None
 
 
-def augment_to_rebalance(df: pd.DataFrame,  threshold: int) -> (pd.DataFrame, pd.DataFrame):
+def augment_to_rebalance(df: pd.DataFrame,  threshold: int, mode: str = 'equality') -> (pd.DataFrame, pd.DataFrame):
     
     count_df = (df
                 [['label','label_name']]
@@ -39,25 +44,6 @@ def augment_to_rebalance(df: pd.DataFrame,  threshold: int) -> (pd.DataFrame, pd
     #if it has *exactly* the target value... yes, this actually came up
     
     on_target_df = df.query('label in @on_taget_labels')
-    
-    #over threshold friends
-    
-    over_threshold_df = df.query('label in @over_threshold_labels')
-    
-    over_balanced_train_df = None
-    over_unused_df = None
-    
-    for label in over_threshold_labels:
-        sub_df = over_threshold_df.query('label == @label')
-        
-        if over_balanced_train_df is None:
-            over_balanced_train_df, over_unused_df = train_test_split(sub_df, train_size = threshold)
-        
-        else:
-            sub_balanced_df, sub_unused_df = train_test_split(sub_df, train_size = threshold)
-            over_balanced_train_df = pd.concat([over_balanced_train_df, sub_balanced_df])
-            over_unused_df = pd.concat([over_unused_df, sub_unused_df])
-    
     
     # under theshold records
     under_threshold_df = df.query('label in @under_threshold_labels')
@@ -75,6 +61,34 @@ def augment_to_rebalance(df: pd.DataFrame,  threshold: int) -> (pd.DataFrame, pd
         
         else:
             augmented_under_df = pd.concat([augmented_under_df, augmented_sub_df])
+    
+    
+    #over threshold friends
+    
+    over_threshold_df = df.query('label in @over_threshold_labels')
+    
+    if mode == 'equality':
+        
+        
+        over_balanced_train_df = None
+        over_unused_df = None
+        
+        for label in over_threshold_labels:
+            sub_df = over_threshold_df.query('label == @label')
+            
+            if over_balanced_train_df is None:
+                over_balanced_train_df, over_unused_df = train_test_split(sub_df, train_size = threshold)
+                
+            else:
+                sub_balanced_df, sub_unused_df = train_test_split(sub_df, train_size = threshold)
+                over_balanced_train_df = pd.concat([over_balanced_train_df, sub_balanced_df])
+                over_unused_df = pd.concat([over_unused_df, sub_unused_df])
+    
+    elif mode == 'augment':
+        over_balanced_train_df = over_threshold_df
+        over_unused_df = None
+        
+    
     
     rebalanced_df = pd.concat([augmented_under_df, on_target_df, over_balanced_train_df])
     
@@ -105,7 +119,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--augmentation-value",
         type=int,
-        default=500,
+        default=1000,
         metavar="N",
         help="The number of training data points to obtain for all classes",
     )
@@ -113,7 +127,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--original-train-file",
         type=str,
-        default='./prepared_data/family_train.csv',
+        default='./prepared_data/train.csv',
         metavar="N",
         help="Location of the training data with the original test-train split",
     )
@@ -121,7 +135,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--original-test-file",
         type=str,
-        default='./prepared_data/family_test.csv',
+        default='./prepared_data/test.csv',
         metavar="N",
         help="Location of the training data with the original test-train split",
     )
@@ -135,8 +149,13 @@ if __name__ == '__main__':
     )
     
     parser.add_argument(
-        "--lr", type=float, default=0.01, metavar="LR", help="learning rate (default: 0.01)"
+        "--mode",
+        type=str,
+        default='augment',
+        metavar="N",
+        help="Whether to augment ('augment') less common classes or to enforce equal sizes for all classes ('equality') ",
     )
+    
     
     args = parser.parse_args()
     
@@ -147,4 +166,4 @@ if __name__ == '__main__':
     output_rebalance_train_dir = os.path.join(args.output_dir, 'train.csv')
     output_rebalance_test_dir = os.path.join(args.output_dir, 'test.csv')
     
-    main(count_per_class_training, original_balance_train_dir, original_balance_test_dir, output_rebalance_train_dir, output_rebalance_test_dir)
+    main(count_per_class_training, original_balance_train_dir, original_balance_test_dir, output_rebalance_train_dir, output_rebalance_test_dir, args.mode)
