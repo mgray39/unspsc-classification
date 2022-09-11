@@ -30,8 +30,8 @@ def number_correct(preds, labels):
     return np.sum(pred_flat == labels_flat)
 
 
-def get_train_data_loader(batch_size):
-    training_data = pd.read_csv(os.path.join("prepared_data", "train.csv"))
+def get_train_data_loader(data_dir, batch_size):
+    training_data = pd.read_csv(os.path.join(data_dir, "train.csv"))
     descriptions = training_data.description.values
     labels = training_data.label.values
 
@@ -67,8 +67,8 @@ def get_train_data_loader(batch_size):
     return train_dataloader
 
 
-def get_test_data_loader(test_batch_size):
-    test_data = pd.read_csv(os.path.join("prepared_data", "test.csv"))
+def get_test_data_loader(data_dir, test_batch_size):
+    test_data = pd.read_csv(os.path.join(data_dir, "test.csv"))
     descriptions = test_data.description.values
     labels = test_data.label.values
 
@@ -119,7 +119,7 @@ def net():
 def train(model, device, loss_function, optimizer, epochs, train_loader, test_loader, hook):
     
     if hook:
-        hook.set_mode(modes.EVAL)
+        hook.set_mode(modes.TRAIN)
     
     for epoch in range(1, epochs + 1):
         print(f'current epoch: {epoch}')
@@ -215,12 +215,13 @@ def main(args):
         eps=args.eps,  # args.adam_epsilon - default is 1e-8.
     )
     
-    hook.register_hook(model)
-    hook.register_loss(loss_function)
-    
     device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     logger.info(f'Using: {device}')
     model = model.to(device)
+    
+    hook.register_hook(model)
+    hook.register_loss(loss_function)
+    
     model = train(model, device, loss_function, optimizer, args.epochs, train_loader, test_loader, hook)
     
     model_save_path = os.path.join(args.model_dir, 'model.pth')
@@ -238,7 +239,6 @@ if __name__ == "__main__":
         "--batch-size",
         type=int,
         default=64,
-    parser.add_argument("--model-dir", type=str, default=os.environ["SM_MODEL_DIR"])
         metavar="N",
         help="input batch size for training (default: 64)",
     )
@@ -266,8 +266,13 @@ if __name__ == "__main__":
         metavar="EPS",
         help="epsilon (default: 1e-8)"
     )
-    
+ 
+    # Container environment
+    parser.add_argument("--hosts", type=list, default=json.loads(os.environ["SM_HOSTS"]))
+    parser.add_argument("--current-host", type=str, default=os.environ["SM_CURRENT_HOST"])
     parser.add_argument("--model-dir", type=str, default=os.environ["SM_MODEL_DIR"])
+    parser.add_argument("--data-dir", type=str, default=os.environ["SM_CHANNEL_TRAINING"])
+    parser.add_argument("--num-gpus", type=int, default=os.environ["SM_NUM_GPUS"])
     
     args = parser.parse_args()
     
