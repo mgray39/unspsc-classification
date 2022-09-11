@@ -19,6 +19,13 @@ import smdebug.pytorch as smd
 from smdebug import modes
 from smdebug.pytorch import get_hook
 
+import logging
+
+#standard logging config
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler(sys.stdout))
+
 MAX_LEN = 128
 
 #distilbert tokenizer - distilbert uncased
@@ -122,7 +129,7 @@ def train(model, device, loss_function, optimizer, epochs, train_loader, test_lo
         hook.set_mode(modes.TRAIN)
     
     for epoch in range(1, epochs + 1):
-        print(f'current epoch: {epoch}')
+        logger.info(f'current epoch: {epoch}')
         total_loss = 0
         model.train()
         for step, batch in enumerate(train_loader):
@@ -143,7 +150,7 @@ def train(model, device, loss_function, optimizer, epochs, train_loader, test_lo
             optimizer.step()
             
             if step % 10  == 0:
-                print(
+                logger.info(
                     "Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f}".format(
                         epoch,
                         step * len(batch[0]),
@@ -184,11 +191,11 @@ def test(model, test_loader, device, hook):
             bal_acc_tot += bal_acc
             
             if step % 10 == 0:
-                print(f'Test step: {step}, Accuracy: {correct/len(batch[0])}, Balanced Accuracy: {bal_acc}')
+                logger.info(f'Test step: {step}, Accuracy: {correct/len(batch[0])}, Balanced Accuracy: {bal_acc}')
             
             
 
-    print("Test set: Accuracy: ", correct_total/len(test_loader.dataset))
+    logger.info("Test set: Accuracy: ", correct_total/len(test_loader.dataset))
     
     return model
 
@@ -216,7 +223,9 @@ def main(args):
     )
     
     device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    
     logger.info(f'Using: {device}')
+    
     model = model.to(device)
     
     hook.register_hook(model)
