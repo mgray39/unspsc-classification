@@ -51,63 +51,47 @@ This project prepares a classifier for the United Nations Standard Product and S
 #### String Length Truncation
 
 
+### Examples Used to Iterate
+
+
 ### Initial Local Implementation
 
 #### Local Model Development 
 
 ##### The Need for Data Augmentation
 
-#####
+#### Modification for AWS Environment
 
 
-## Classification Methodology
+##### Hyperparameter tuning
 
 
-### HuggingFace Transformers
+##### Profiling Results
+
+
+## Evaluation
+
+
+### Accuracy vs Balanced Accuracy
+
+
+### Metric Comparison
+
+
+## Deployment
+
+
+### IAM
+
+
+### Lambda
+
+### Concurrency & Autoscaling
+
+
+## Discussion
 
 
 
 
-### Class Imbalance & NLP Data Augmentation
-
-
-#### Class Imbalance in the Training Set
-
-
-
-
-
-## Comparison Baseline
-
-
-## Hyperparameter Tuning
-
-
-## Optimal Model Performance
-
-
-## AWS Environment
-
-
-### Running Notebook Configuration
-
-
-### Training Instance Requirements
-
-
-### IAM Roles 
-
-
-### Model Deployment
-
-
-#### Instance Size for Deployment
-
-
-#### Endpoint Concurrency
-
-
-#### AWS Lambda 
-
-
-### 
+## Conclusion
