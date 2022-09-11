@@ -19,6 +19,13 @@ import smdebug.pytorch as smd
 from smdebug import modes
 from smdebug.pytorch import get_hook
 
+import logging
+
+#standard logging config
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler(sys.stdout))
+
 MAX_LEN = 128
 
 #distilbert tokenizer - distilbert uncased
@@ -30,8 +37,8 @@ def number_correct(preds, labels):
     return np.sum(pred_flat == labels_flat)
 
 
-def get_train_data_loader(batch_size):
-    training_data = pd.read_csv(os.path.join("prepared_data", "train.csv"))
+def get_train_data_loader(data_dir, batch_size):
+    training_data = pd.read_csv(os.path.join(data_dir, "train.csv"))
     descriptions = training_data.description.values
     labels = training_data.label.values
 
@@ -67,8 +74,8 @@ def get_train_data_loader(batch_size):
     return train_dataloader
 
 
-def get_test_data_loader(test_batch_size):
-    test_data = pd.read_csv(os.path.join("prepared_data", "test.csv"))
+def get_test_data_loader(data_dir, test_batch_size):
+    test_data = pd.read_csv(os.path.join(data_dir, "test.csv"))
     descriptions = test_data.description.values
     labels = test_data.label.values
 
@@ -119,10 +126,10 @@ def net():
 def train(model, device, loss_function, optimizer, epochs, train_loader, test_loader, hook):
     
     if hook:
-        hook.set_mode(modes.EVAL)
+        hook.set_mode(modes.TRAIN)
     
     for epoch in range(1, epochs + 1):
-        print(f'current epoch: {epoch}')
+        logger.info(f'current epoch: {epoch}')
         total_loss = 0
         model.train()
         for step, batch in enumerate(train_loader):
@@ -143,7 +150,7 @@ def train(model, device, loss_function, optimizer, epochs, train_loader, test_lo
             optimizer.step()
             
             if step % 10  == 0:
-                print(
+                logger.info(
                     "Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f}".format(
                         epoch,
                         step * len(batch[0]),
@@ -184,11 +191,11 @@ def test(model, test_loader, device, hook):
             bal_acc_tot += bal_acc
             
             if step % 10 == 0:
-                print(f'Test step: {step}, Accuracy: {correct/len(batch[0])}, Balanced Accuracy: {bal_acc}')
+                logger.info(f'Test step: {step}, Accuracy: {correct/len(batch[0])}, Balanced Accuracy: {bal_acc}')
             
             
 
-    print("Test set: Accuracy: ", correct_total/len(test_loader.dataset))
+    logger.info("Test set: Accuracy: ", correct_total/len(test_loader.dataset))
     
     return model
 
@@ -215,12 +222,15 @@ def main(args):
         eps=args.eps,  # args.adam_epsilon - default is 1e-8.
     )
     
+    device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    
+    logger.info(f'Using: {device}')
+    
+    model = model.to(device)
+    
     hook.register_hook(model)
     hook.register_loss(loss_function)
     
-    device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    logger.info(f'Using: {device}')
-    model = model.to(device)
     model = train(model, device, loss_function, optimizer, args.epochs, train_loader, test_loader, hook)
     
     model_save_path = os.path.join(args.model_dir, 'model.pth')
@@ -238,7 +248,6 @@ if __name__ == "__main__":
         "--batch-size",
         type=int,
         default=64,
-    parser.add_argument("--model-dir", type=str, default=os.environ["SM_MODEL_DIR"])
         metavar="N",
         help="input batch size for training (default: 64)",
     )
@@ -266,8 +275,13 @@ if __name__ == "__main__":
         metavar="EPS",
         help="epsilon (default: 1e-8)"
     )
-    
+ 
+    # Container environment
+    parser.add_argument("--hosts", type=list, default=json.loads(os.environ["SM_HOSTS"]))
+    parser.add_argument("--current-host", type=str, default=os.environ["SM_CURRENT_HOST"])
     parser.add_argument("--model-dir", type=str, default=os.environ["SM_MODEL_DIR"])
+    parser.add_argument("--data-dir", type=str, default=os.environ["SM_CHANNEL_TRAINING"])
+    parser.add_argument("--num-gpus", type=int, default=os.environ["SM_NUM_GPUS"])
     
     args = parser.parse_args()
     
