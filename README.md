@@ -35,9 +35,7 @@ We should pay attention though that this trade mark also has items in Nice Class
 >Meat, fish, poultry and game; meat extracts; preserved, frozen, dried and cooked fruits and vegetables; jellies, jams, compotes; eggs; milk, cheese, butter, yogurt and other milk products; oils and fats for food.
 >See https://www.wipo.int/classifications/nice/nclpub/en/fr/?basic_numbers=show&class_number=29
 
-While the items that are covered between the two classes are clearly different, the short descriptions make it very difficult to identify what a relative rise in the number of class 30 trade marks would mean for the food branding sector over an increase in the number of class 29 trade marks. When providing high level reporting on brand landscapes, the use of Nice classification is in practice highly difficult.
-
-
+While the items that are covered between the two classes are clearly different, the short descriptions make it very difficult to identify what a relative rise in the number of class 30 trade marks would mean for the food branding sector over an increase in the number of class 29 trade marks. When providing high level reporting on brand landscapes, the use of Nice classification as a category variable is very difficult and in practice it is rarely used in such analysis in my experience.
 
 ### What is UNSPSC
 
@@ -75,11 +73,13 @@ The other consequence of classification information being provided by procuremen
 
 ### Performance Metrics
 
-When building the classifier, we need to be aware of how we would measure the success of the project. 
+When building the classifier, we need to be aware of how we would measure the success of the project. Initially, the original scoping of the project deemed that accuracy would the best metric by which to measure the accuracy of the classifier. However, when considering the significant class imbalance problems present in the dataset (please see the sections below), it was decided to employ a [balanced accuracy score from sklearn](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.balanced_accuracy_score.html#sklearn.metrics.balanced_accuracy_score). This metric is the average of the recall on each of the classes. This corrects in the case of imbalanced class datasets by preventing a classifier from being rewarded from merely biasing all classification to the over-represented class. Even where the support for a class is small, failure to correctly classify members of this class is equally weighted with classes which have higher support. This will lead to a classifier that has better performance across unseen data than one that exploits the imbalance in the training set.
 
 ## Analysis
 
-### Data Quality
+### Sequence Length
+
+The file `wrangling_segment.py`
 
 
 ### Class Imbalance
