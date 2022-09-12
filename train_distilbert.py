@@ -172,6 +172,7 @@ def test(model, test_loader, device, hook):
     
     model.eval()
     correct_total = 0
+    bal_acc_tot = 0
 
     with torch.no_grad():
         for step, batch in enumerate(test_loader):
@@ -192,10 +193,8 @@ def test(model, test_loader, device, hook):
             
             if step % 10 == 0:
                 logger.info(f'Test step: {step}, Accuracy: {correct/len(batch[0])}, Balanced Accuracy: {bal_acc}')
-            
-            
 
-    logger.info("Test set: Accuracy: ", correct_total/len(test_loader.dataset))
+    logger.info(f"Test set: Accuracy:  {correct_total/len(test_loader.dataset)} Balanced Accuracy Final: {bal_acc_tot/len(test_loader)}")
     
     return model
 
