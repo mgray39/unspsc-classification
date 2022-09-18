@@ -12,10 +12,11 @@ import torch.utils.data.distributed
 from torch import nn
 from torch.utils.data import DataLoader, RandomSampler, TensorDataset
 from torch.optim import AdamW
-from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
+from transformers import DistilBertTokenizer, DistilBertForSequenceClassification, BatchEncoding
 from sklearn.metrics import balanced_accuracy_score
 import unicodedata
 from io import StringIO
+import logging
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -72,10 +73,16 @@ def model_fn(model_dir):
 def input_fn(request_body, content_type):
     
     if content_type == json_content_type:
-        df = (pd.read_json(StringIO(request_body))
+        
+        logging.info(request_body)
+        #logging.info(StringIO(request_body).decode())
+        
+        
+        df = (pd.DataFrame([json.loads(request_body)])
                .assign(description = lambda df: string_cleaning(df['description'])))
         
-        tensor_dict = prepare_string(df.iloc[0,0])
+        tensor_dict = BatchEncoding(prepare_string(df.iloc[0,0], tokenizer, MAX_LEN))
+        
         
         return tensor_dict
         
@@ -96,8 +103,14 @@ def predict_fn(input_object, model):
     input_object = input_object.to(device)
     
     with torch.no_grad():
-        prediction = model(input_object.unsqueeze(0))
-    return prediction
+        prediction = model(input_object['input_ids'], input_object['attention_mask'])
+        
+        preds = prediction['logits'].detach().numpy()
+        
+        logits = preds[0]
+        pred_class = logits.argmax()
+        
+    return {'logits': logits, 'pred_class':pred_class}
 
 
 def remove_accents(input_str: str) -> str:
@@ -132,7 +145,7 @@ def prepare_string(string, tokenizer, MAX_LEN):
     att_mask = [int(id_ > 0) for id_ in input_ids]
     
     # convert to PyTorch data types.
-    test_inputs = torch.tensor(input_ids)
-    test_masks = torch.tensor(att_mask)
+    test_inputs = torch.tensor([input_ids])
+    test_masks = torch.tensor([att_mask])
     
     return {'input_ids': test_inputs, 'attention_mask': test_masks}

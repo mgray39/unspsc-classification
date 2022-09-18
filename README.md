@@ -22,17 +22,17 @@ The Nice Classfiication system of goods and services provides 45 high level clas
 
 When an application for a trade mark is submitted, along with classification information in the relevant standard (most nations use Nice -- the US has its own system), applicants are required to submit descriptions in plain language of the goods and services to which their prospective mark may attach. Consider, for example, Australian Trade Mark number 957064:
 
-> Edible sandwiches for consumption on or off the premises, coffee, coffee substitutes, tea, cocoa, sugar, honey, rice, tapioca, flour, breakfast cereals, processed cereals, cereal-based snack foods and ready to eat cereal-derived food bars; bread, biscuits, cakes, pastries, dairy-based shakes, soft-serve ice cream, ice milk and frozen yoghurt; yeast, baking powder, salt, mustard, pepper, sauces, spices, seasonings and ice.
+> Edible sandwiches for consumption on or off the premises, coffee, coffee substitutes, tea, cocoa, sugar, honey, rice, tapioca, flour, breakfast cereals, processed cereals, cereal-based snack foods and ready to eat cereal-derived food bars; bread, biscuits, cakes, pastries, dairy-based shakes, soft-serve ice cream, ice milk and frozen yoghurt; yeast, baking powder, salt, mustard, pepper, sauces, spices, seasonings and ice.<br>
 > See https://search.ipaustralia.gov.au/trademarks/search/view/957064 Class 30.
 
 This is a partial goods and services item description for the "I'm lovin' it" mark used by McDonald's Restaurants in Australia. Let us consider the definition provided by WIPO for Nice Class 30:
 
->Coffee, tea, cocoa and substitutes therefor; rice, pasta and noodles; tapioca and sago; flour and preparations made from cereals; bread, pastries and confectionery; chocolate; ice cream, sorbets and other edible ices; sugar, honey, treacle; yeast, baking-powder; salt, seasonings, spices, preserved herbs; vinegar, sauces and other condiments; ice (frozen water).
+>Coffee, tea, cocoa and substitutes therefor; rice, pasta and noodles; tapioca and sago; flour and preparations made from cereals; bread, pastries and confectionery; chocolate; ice cream, sorbets and other edible ices; sugar, honey, treacle; yeast, baking-powder; salt, seasonings, spices, preserved herbs; vinegar, sauces and other condiments; ice (frozen water).<br>
 > See https://www.wipo.int/classifications/nice/nclpub/en/fr/?basic_numbers=show&class_number=30
 
 We should pay attention though that this trade mark also has items in Nice Class 29. WIPO says that Nice class 29 is:
 
->Meat, fish, poultry and game; meat extracts; preserved, frozen, dried and cooked fruits and vegetables; jellies, jams, compotes; eggs; milk, cheese, butter, yogurt and other milk products; oils and fats for food.
+>Meat, fish, poultry and game; meat extracts; preserved, frozen, dried and cooked fruits and vegetables; jellies, jams, compotes; eggs; milk, cheese, butter, yogurt and other milk products; oils and fats for food.<br>
 >See https://www.wipo.int/classifications/nice/nclpub/en/fr/?basic_numbers=show&class_number=29
 
 While the items that are covered between the two classes are clearly different, the short descriptions make it very difficult to identify what a relative rise in the number of class 30 trade marks would mean for the food branding sector over an increase in the number of class 29 trade marks. When providing high level reporting on brand landscapes, the use of Nice classification as a category variable is very difficult and in practice it is rarely used in such analysis in my experience.
@@ -77,51 +77,94 @@ When building the classifier, we need to be aware of how we would measure the su
 
 ## Analysis
 
+### Dataset Preparation
+
+The file `wrangling_segment.py` allows the user to specify either to use segment, family or specify their own summary groups of the above. This function is intended to be used in cases where a series of classifiers are used to first conduct preclassification into groups prior to classification into a target.
+
+If the flag `--download` is passed to this script, the script will download and unpack the dataset files from the open data repositories that source them.
+
+For the purposes of the demonstration of this project, it is sufficient to demonstrate the capabilities of this classification system to simply train at the family level.
+
+As part of this preprocessing script, the following steps are conducted to preprocess the data:
+
+1. If required strips html tags from the descriptions.
+2. Strips accents from descriptions.
+3. Strips excessive white space.
+4. Strips extraneous carriage returns.
+
 ### Sequence Length
 
-The file `wrangling_segment.py`
+After this processing, exploratory analysis was conducted in accordance with the content of [`exploratory_data_analysis.ipynb`](./exploratory_data_analysis.ipynb) in this repository. The median length of the descriptions sequences is 6 words after preprocessing. The modal sequence length was 4 words. The distribution is heavily right skewed. 
 
+In order to ensure maximum sequence preservation, I note that a large sequence length was chosen for trimming activities. Less than 1% of the data was found to have over 128 words. This means that choosing to trim sequences of this length is highly unlikely to affect the performacne of the classifier.
 
 ### Class Imbalance
 
+In the exploratory data analysis, it was noted that there are significant class imbalance issues in the dataset at the family level. The largest class was noted to have only 85 members, while the largest was found to have over 55,000 members. These datasets are obtained from a combination of processed classification standard datasets as well as government purchasing record datasets. There are products and services which governments are unlikely to procure compared to the general population. As a result, class imbalance given the bias of the training data was not unexpected. Class imbalance was treated using a data augmentation method described below.
 
 ### Solution Options: RNN
 
+Some of the earlier models used to solve text classification problems were Recurrent Neural Networks. These networks allow sequence information to be processed in such a way that previous parts of a sequence are fed into the network as inputs allowing the model to learn from the content of a sequence rather than the individual parts of the sequence alone.
+
+These models were largely surplanted first by Long Short Term Memory (LSTM) models which are a modified RNN architecture. 
+
 #### Benchmark Model
 
+The benchmark model for the classification is a from scratch trained recurrent neural network model. This model was trained over 200 epochs and includes 3 hidden layers to allow for nonlinearity given the large number of target classes compared to the input size. In development of this model, acceptable performance was first obtained using a locally trained model prior to that model being ported to sagemaker.
+
+The model achieved an accuracy of 70.3% and a balanced accuracy of 51.6%
 
 ### Solution Options: Transformers
 
+Transformer models represent the state of the art in sequence embedding language processing. These models are trained on large datasets and utilise a mechanism of self-attention to transform sequence embedding information into some level of semantic content of language sequences. These models can be used to perform semantic text similarity analysis along with other machine language tasks.
+
 #### HuggingFace
 
-#### DistilBERT
+HuggingFace is an open source project which contains implementations of common language models in a range of programming languages. HuggingFace allows users to download the weights for pretrained language models that would otherwise be beyond the reach of analysts without the resources of large technology enterprises like google. HuggingFace makes available GPT-2, BERT and other popular language models, along with tokenizers.
 
+#### DistilBERT
+In order to minimise the complexity of the resulting model, a smaller language model was chosen. DistilBERT is a model which seeks to replicate the performance of the larger language model BERT without the need for so many trainable parameters. This will hopefully improve training times over a more full featured model while retaining the majority of the performance.
 
 ## Methodology 
 
-
 ### Download & Preprocessing
+As noted above, the `wrangling_segment.py` script, if passed the `--download` flag will download the files from the relevant open data sources from the internet. This data then has some basic string cleaning applied as described above.
 
 #### Data Augmentation Using Randon Synonyms
 
+The class imbalance issue in this dataset was noted to be a significant concern as a result of the largest class having over 600 times the number of members as the smallest class. In [this](https://neptune.ai/blog/data-augmentation-nlp) blog by Neptune.ai, the author discusses the issue of class imbalance in training data for Natural Language Processing (nlp) problems. The author advocates the use of data augmentation using a number of methods. From these methods, random synonym replacement was used through the python [`nlpaug`](https://pypi.org/project/nlpaug/) library. This method uses WordNet to identify synonyms for randomly selected words in the provided strings.
+
+The augmentation script `data_augmentation.py` allows the user to pass a desired number of members. Any class in the dataset which has fewer than this desired number of members will be randomly sampled and have synonym replacement applied. The user can also specify if the classes with more than this number of members should be undersampled to produce a perfectly balanced set of classes in the training data. If this option is specified, the excess members of the now undersampled training classes are transferred to the test set to allow them to be used in evaluation.
+
+The default behaviour of the script is to only augment the under-represented classes and leave the over-represented classes unmodified. 
+
+This is the method used for this demonstration. AS a result the training set contains over 400,000 records.
 
 #### String Length Truncation
 
+In line with the findings of the exploratory data analysis, for the baseline model, strings of longer than 64 words were truncated and for the DistilBERT model, sequences of longer than 128 were used. These are likely to truncate fewer than 1% of the samples.
 
 ### Examples Used to Iterate
 
+Udacity provided an example of the use of a sentence transformer model for text classification. This model was used as a starting point for iteration and modification for the present use case.
+
+[This](https://coderzcolumn.com/tutorials/artificial-intelligence/pytorch-rnn-for-text-classification-tasks) blog post was used to inform the initial approaches to the development of the RNN baseline model.
 
 ### Initial Local Implementation
 
-#### Local Model Development 
+My local machine has an NVidia GTX1060 GPU. I have installed CUDA on this machine to allow local development in the initial stages prior to redeploying the produced model to Sagemaker. If you would like to use this model, I strongly recommend the use of a local GPU if available as a way of reducing costs.
 
-##### The Need for Data Augmentation
+#### The Need for Data Augmentation
+
+The locally trained model was initially implemented without class rebalancing and utilised accuracy rather than balanced accuracy as the performance measure. However, without data augmentation, the model was noted to suffer from performance issues with classes that it had limited exposure to. This was obscured in the performance metrics by the use of accuracy rather than balanced accuracy.
 
 #### Modification for AWS Environment
 
+The scripts were modified for use in the AWS environment by adding arguments which allowed the scripts to run in containerised training environments. It was necessary in the case of the RNN to provide a `requirements.txt` file as the default AWS Sagemaker environment does not come preconfigured with the required `torchtext` library used for preprocessing the files into batch loaders for use with the training loop.
 
 ##### Hyperparameter tuning
 
+The `running_notebook.ipynb` file was modified to work with the Sagemaker enfironment by considering a small range of four hyperparameters
 
 ##### Profiling Results
 
