@@ -24,7 +24,7 @@ logger.addHandler(logging.StreamHandler(sys.stdout))
 
 #content types
 
-json_content_type = 'text/json'
+json_content_type = 'application/json'
 csv_content_type = 'text/csv'
 
 
@@ -74,10 +74,11 @@ def input_fn(request_body, content_type):
     
     if content_type == json_content_type:
         
-        logging.info(request_body.decode())
+        logging.info(request_body)
         #logging.info(StringIO(request_body).decode())
         
-        df = (pd.DataFrame([json.loads(request_body.decode())])
+        
+        df = (pd.DataFrame([json.loads(request_body)])
                .assign(description = lambda df: string_cleaning(df['description'])))
         
         tensor_dict = BatchEncoding(prepare_string(df.iloc[0,0], tokenizer, MAX_LEN))
@@ -106,7 +107,10 @@ def predict_fn(input_object, model):
         
         preds = prediction['logits'].detach().numpy()
         
-    return preds[0]
+        logits = preds[0]
+        pred_class = logits.argmax()
+        
+    return {'logits': logits, 'pred_class':pred_class}
 
 
 def remove_accents(input_str: str) -> str:
