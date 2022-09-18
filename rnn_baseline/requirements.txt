@@ -8,18 +8,18 @@
 
 attrs==21.4.0
     # via sagemaker
-awscli==1.25.71
+awscli==1.25.76
     # via -r ./rnn_baseline/requirements.in
-boto3==1.24.70
+boto3==1.24.75
     # via
     #   -r ./rnn_baseline/requirements.in
     #   sagemaker
-botocore==1.27.70
+botocore==1.27.75
     # via
     #   awscli
     #   boto3
     #   s3transfer
-certifi==2022.6.15.1
+certifi==2022.9.14
     # via requests
 charset-normalizer==2.1.1
     # via requests
@@ -33,7 +33,7 @@ docutils==0.16
     # via awscli
 google-pasta==0.2.0
     # via sagemaker
-idna==3.3
+idna==3.4
     # via requests
 importlib-metadata==4.12.0
     # via sagemaker
@@ -41,7 +41,7 @@ jmespath==1.0.1
     # via
     #   boto3
     #   botocore
-joblib==1.1.0
+joblib==1.2.0
     # via scikit-learn
 multiprocess==0.70.13
     # via pathos
@@ -64,7 +64,7 @@ pox==0.3.1
     # via pathos
 ppft==1.7.6.5
     # via pathos
-protobuf==3.20.1
+protobuf==3.20.2
     # via
     #   protobuf3-to-dict
     #   sagemaker
